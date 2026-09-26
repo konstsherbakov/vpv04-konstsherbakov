@@ -2,3 +2,5 @@
 __pycache__/
 .env
 reminder_app/reminders.db*
+password_manager/passwords.db*
+password_manager/.key
