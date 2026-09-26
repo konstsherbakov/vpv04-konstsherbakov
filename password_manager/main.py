@@ -1,6 +1,6 @@
 """Менеджер паролей (CLI). Запуск:
 
-    python main.py                 интерактивный режим (вход один раз, дальше команды)
+    python main.py                 меню (вход один раз, дальше выбор пунктов 1-6)
     python main.py add [название]
     python main.py get <название>
     python main.py list
@@ -134,7 +134,7 @@ class PasswordManager:
     def cmd_list(self, args: argparse.Namespace) -> None:
         entries = self.db.list_entries()
         if not entries:
-            print("Записей пока нет. Добавьте первую командой add.")
+            print("Записей пока нет. Добавьте первую: пункт 1 меню или команда add.")
             return
         name_w = max(len("Название"), *(len(e.name) for e in entries))
         login_w = max(len("Логин"), *(len(e.login) for e in entries))
@@ -222,33 +222,71 @@ def run_command(app: PasswordManager, args: argparse.Namespace) -> None:
         print(f"Ошибка: {exc}")
 
 
+MENU = {
+    "1": ("add", "Добавить новый пароль"),
+    "2": ("get", "Получить пароль"),
+    "3": ("list", "Список всех паролей"),
+    "4": ("delete", "Удалить пароль"),
+    "5": ("new", "Сгенерировать пароль"),
+    "6": ("exit", "Выход"),
+}
+EXIT_WORDS = {"6", "exit", "quit", "q"}
+LINE = "=" * 50
+
+
+def print_menu() -> None:
+    print(f"\n{LINE}\n{'МЕНЕДЖЕР ПАРОЛЕЙ':^50}\n{LINE}")
+    for number, (_, title) in MENU.items():
+        print(f"{number}. {title}")
+    print(LINE)
+
+
+def args_from_menu(command: str) -> argparse.Namespace:
+    """Аргументы для пункта меню: название и прочее спросит сам обработчик команды."""
+    args = argparse.Namespace(command=command, name=None, yes=False, length=16, no_symbols=False)
+    if command == "new":
+        length = ask("Длина пароля (Enter — 16): ", allow_empty=True)
+        if length:
+            if not length.isdigit():
+                raise AppError("Длина должна быть числом.")
+            args.length = int(length)
+    return args
+
+
 def interactive(app: PasswordManager, parser: argparse.ArgumentParser) -> None:
-    print("Команды: add, get, list, delete, new, help, exit")
     app.just_logged_in = False  # в интерактивном режиме get заново спрашивает мастер-пароль
     while True:
+        print_menu()
         try:
-            line = input("\npm> ").strip()
+            line = input(f"Выберите действие (1-{len(MENU)}): ").strip()
         except EOFError:
             print()
             return
         if not line:
             continue
-        if line in {"exit", "quit", "q"}:
+        if line in EXIT_WORDS:
+            print("До свидания!")
             return
         if line in {"help", "?"}:
             parser.print_help()
             continue
         try:
-            args = parser.parse_args(shlex.split(line))
+            if line in MENU:
+                args = args_from_menu(MENU[line][0])
+            elif line.isdigit():
+                raise AppError(f"Нет такого пункта. Введите число от 1 до {len(MENU)}.")
+            else:
+                # можно ввести и команду целиком, например: get Google
+                args = parser.parse_args(shlex.split(line))
+                if args.command is None:
+                    continue
+            run_command(app, args)
         except SystemExit:  # argparse уже напечатал ошибку
             continue
         except ValueError as exc:  # незакрытая кавычка в shlex
             print(f"Ошибка: {exc}")
-            continue
-        if args.command is None:
-            continue
-        try:
-            run_command(app, args)
+        except AppError as exc:
+            print(f"Ошибка: {exc}")
         except (KeyboardInterrupt, EOFError):
             print("\nОтменено.")
 
